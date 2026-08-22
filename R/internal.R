@@ -10,6 +10,53 @@ missknn_default_cores <- function() {
   max(1L, parallel::detectCores() - 1L)
 }
 
+# Self-contained base-R progress display (no package dependency): a single
+# updating line per column/tuning-batch, written via carriage return, with
+# a bracketed bar, percentage, and an elapsed-time-based ETA. Uncolored by
+# design. A bar is opened per column/tuning-batch (labelled by name) and
+# closed with a newline right after that call returns, so finished bars
+# stay on their own line instead of being overwritten by the next one.
+missknn_progress_bar_width <- 30L
+# Wide enough for the longest built-in label, "Tuning categorical columns"
+# (27 chars), plus a one-space margin before the bracketed bar.
+missknn_progress_label_width <- 28L
+
+missknn_progress_start <- function(label, total, enabled) {
+  if (!isTRUE(enabled) || total <= 0) {
+    return(NULL)
+  }
+  list(label = label, total = total, start = Sys.time())
+}
+
+missknn_progress_cb <- function(state) {
+  if (is.null(state)) {
+    return(NULL)
+  }
+  function(done, total) {
+    width <- missknn_progress_bar_width
+    frac <- done / total
+    filled <- as.integer(round(frac * width))
+    bar <- paste0(
+      strrep("=", max(0L, filled - 1L)),
+      if (filled > 0L) ">" else "",
+      strrep(" ", width - filled)
+    )
+    elapsed <- as.numeric(difftime(Sys.time(), state$start, units = "secs"))
+    eta <- if (done > 0L && done < total) elapsed / done * (total - done) else 0
+    label <- formatC(state$label, width = -missknn_progress_label_width)
+    label <- substr(label, 1L, missknn_progress_label_width)
+    cat(sprintf("\r%s [%s] %3d%%  ETA: %ds", label, bar, as.integer(round(100 * frac)), as.integer(round(eta))))
+    utils::flush.console()
+  }
+}
+
+missknn_progress_done <- function(state) {
+  if (!is.null(state)) {
+    cat("\n")
+  }
+  invisible(NULL)
+}
+
 missknn_validate_input <- function(data) {
   if (!is.data.frame(data) && !is.matrix(data)) {
     stop("`data` must be a data.frame or matrix.", call. = FALSE)
@@ -344,6 +391,10 @@ missknn_single_pass <- function(dt, meta, stochastic = FALSE) {
       # weighted-mean k, spanning small local neighborhoods up to the entire
       # donor pool), so it is used as-is rather than rescaled again here.
       col_reg_neighbors <- min(col_k, length(donors_search))
+      pb_id <- missknn_progress_start(
+        paste0("Imputing ", names(meta$classes)[target]),
+        length(receivers), isTRUE(meta$progress)
+      )
       fills <- cpp_missknn_impute_numeric_column(
         working$numeric_scaled,
         working$numeric_raw,
@@ -361,8 +412,11 @@ missknn_single_pass <- function(dt, meta, stochastic = FALSE) {
         stochastic,
         meta$epsilon,
         meta$ridge,
-        col_reg_neighbors
+        col_reg_neighbors,
+        isTRUE(meta$progress),
+        missknn_progress_cb(pb_id)
       )
+      missknn_progress_done(pb_id)
       working$original[[target]][receivers] <- fills
       working$numeric_raw[receivers, meta$numeric_pos[target]] <- fills
       if (isTRUE(meta$scale)) {
@@ -372,6 +426,10 @@ missknn_single_pass <- function(dt, meta, stochastic = FALSE) {
         working$numeric_scaled[receivers, meta$numeric_pos[target]] <- fills
       }
     } else {
+      pb_id <- missknn_progress_start(
+        paste0("Imputing ", names(meta$classes)[target]),
+        length(receivers), isTRUE(meta$progress)
+      )
       codes <- cpp_missknn_impute_categorical_column(
         working$numeric_scaled,
         working$categorical,
@@ -385,8 +443,11 @@ missknn_single_pass <- function(dt, meta, stochastic = FALSE) {
         meta$k_per_col[target],
         meta$aggregation,
         stochastic,
-        meta$epsilon
+        meta$epsilon,
+        isTRUE(meta$progress),
+        missknn_progress_cb(pb_id)
       )
+      missknn_progress_done(pb_id)
       fills <- vapply(codes, missknn_decode_categorical, character(1), meta = meta, target = target)
       working$original[[target]][receivers] <- fills
       working$categorical[receivers, meta$categorical_pos[target]] <- codes
@@ -499,22 +560,28 @@ missknn_tune_all <- function(dt, meta) {
   }
 
   if (length(num_targets)) {
+    pb_id <- missknn_progress_start("Tuning numeric columns", length(num_targets), isTRUE(meta$progress))
     res <- cpp_missknn_tune_numeric(
       meta$numeric$scaled_matrix, meta$numeric$raw_matrix, meta$categorical$matrix,
       meta$type_codes, meta$numeric_pos, meta$categorical_pos, meta$weights,
-      meta$epsilon, meta$ridge, num_targets, num_train, num_hold, num_kgrid
+      meta$epsilon, meta$ridge, num_targets, num_train, num_hold, num_kgrid,
+      isTRUE(meta$progress), missknn_progress_cb(pb_id)
     )
+    missknn_progress_done(pb_id)
     k_per_col[num_targets] <- res$k
     estimator_per_col[num_targets] <- res$estimator
     is_global_col[num_targets] <- res$is_global
   }
 
   if (length(cat_targets)) {
+    pb_id <- missknn_progress_start("Tuning categorical columns", length(cat_targets), isTRUE(meta$progress))
     res_cat <- cpp_missknn_tune_categorical(
       meta$numeric$scaled_matrix, meta$categorical$matrix,
       meta$type_codes, meta$numeric_pos, meta$categorical_pos, meta$weights,
-      meta$epsilon, cat_targets, cat_train, cat_hold, cat_kgrid
+      meta$epsilon, cat_targets, cat_train, cat_hold, cat_kgrid,
+      isTRUE(meta$progress), missknn_progress_cb(pb_id)
     )
+    missknn_progress_done(pb_id)
     k_per_col[cat_targets] <- res_cat$k
     is_global_col[cat_targets] <- res_cat$is_global
   }
@@ -524,7 +591,7 @@ missknn_tune_all <- function(dt, meta) {
 
 missknn_make_meta <- function(dt, k, scale, weights, add_indicator, seed,
                                numeric_estimator = "regression", ridge = 1e-4,
-                               donor_cap = 2000L) {
+                               donor_cap = 2000L, progress = FALSE) {
   types <- missknn_detect_types(dt)
   reg_neighbors <- max(4L * as.integer(k), 30L)
   numeric_prep <- missknn_prepare_numeric(dt, types$numeric_idx, scale = scale)
@@ -562,7 +629,8 @@ missknn_make_meta <- function(dt, k, scale, weights, add_indicator, seed,
     epsilon = 1e-08,
     seed = seed,
     original = dt,
-    current_donor_index = integer(0)
+    current_donor_index = integer(0),
+    progress = isTRUE(progress)
   )
 
   tuned <- missknn_tune_all(dt, meta)

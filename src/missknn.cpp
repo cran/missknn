@@ -8,6 +8,37 @@
 #include <vector>
 
 using namespace Rcpp;
+
+// Progress reporting cannot be driven from inside a RcppParallel Worker's
+// operator() (worker threads are arbitrary, not a designated "master"), so
+// when display is requested the same Worker functor is instead invoked
+// serially, one chunk at a time, from the calling (single) thread. On that
+// thread it's safe to call back into R directly: `progress_cb`, when
+// supplied, is an R closure (owned by the caller, typically driving a
+// `cli` progress bar) invoked periodically with (done, total); capped at
+// ~100 calls total regardless of n to keep the R-call overhead negligible.
+// `Rcpp::checkUserInterrupt()` provides Ctrl-C support, safe here because
+// this loop only ever runs on the main thread.
+template <typename WorkerT>
+static void missknn_run_with_optional_progress(WorkerT& worker, int n, bool display_progress,
+                                                 Rcpp::Nullable<Rcpp::Function> progress_cb = R_NilValue) {
+  if (!display_progress) {
+    RcppParallel::parallelFor(0, n, worker);
+    return;
+  }
+  const bool have_cb = progress_cb.isNotNull();
+  Rcpp::Function cb = have_cb ? Rcpp::Function(progress_cb) : Rcpp::Function("identity");
+  const int report_every = std::max(1, n / 100);
+  for (int i = 0; i < n; ++i) {
+    if ((i & 63) == 0) {
+      Rcpp::checkUserInterrupt();
+    }
+    worker(static_cast<std::size_t>(i), static_cast<std::size_t>(i + 1));
+    if (have_cb && ((i + 1) % report_every == 0 || i + 1 == n)) {
+      cb(i + 1, n);
+    }
+  }
+}
 using namespace RcppParallel;
 
 // Minimum relative holdout-error improvement a local (KNN/regression)
@@ -488,7 +519,9 @@ NumericVector cpp_missknn_impute_numeric_column(
     const bool stochastic,
     const double epsilon,
     const double ridge,
-    const int reg_neighbors) {
+    const int reg_neighbors,
+    const bool display_progress = false,
+    Rcpp::Nullable<Rcpp::Function> progress_cb = R_NilValue) {
   const int n_recv = receiver_rows.size();
   const int n_don = donor_rows.size();
   const int target_pos = numeric_pos[target_col - 1] - 1;
@@ -512,7 +545,7 @@ NumericVector cpp_missknn_impute_numeric_column(
                                 donor_rows_v, receiver_rows_v, target_col, target_pos,
                                 weights_v, k, aggregation, estimator, epsilon, ridge,
                                 reg_neighbors, out);
-    parallelFor(0, n_recv, worker);
+    missknn_run_with_optional_progress(worker, n_recv, display_progress, progress_cb);
     return out;
   }
 
@@ -523,7 +556,16 @@ NumericVector cpp_missknn_impute_numeric_column(
   std::vector<int> topk;
   std::vector<int> topk_reg;
 
+  const bool stoch_have_cb = display_progress && progress_cb.isNotNull();
+  Rcpp::Function stoch_cb = stoch_have_cb ? Rcpp::Function(progress_cb) : Rcpp::Function("identity");
+  const int stoch_report_every = std::max(1, n_recv / 100);
   for (int r = 0; r < n_recv; ++r) {
+    if (display_progress && (r & 63) == 0) {
+      Rcpp::checkUserInterrupt();
+    }
+    if (stoch_have_cb && ((r + 1) % stoch_report_every == 0 || r + 1 == n_recv)) {
+      stoch_cb(r + 1, n_recv);
+    }
     const int receiver = receiver_rows_v[r];
     for (int j = 0; j < n_don; ++j) {
       distances[j] = missknn_distance(receiver - 1, donor_rows_v[j] - 1, target_col - 1,
@@ -731,7 +773,9 @@ IntegerVector cpp_missknn_impute_categorical_column(
     const int k,
     const std::string& aggregation,
     const bool stochastic,
-    const double epsilon) {
+    const double epsilon,
+    const bool display_progress = false,
+    Rcpp::Nullable<Rcpp::Function> progress_cb = R_NilValue) {
   const int n_recv = receiver_rows.size();
   const int n_don = donor_rows.size();
   const int target_pos = categorical_pos[target_col - 1] - 1;
@@ -754,7 +798,7 @@ IntegerVector cpp_missknn_impute_categorical_column(
                                     numeric_pos_v, categorical_pos_v, donor_rows_v,
                                     receiver_rows_v, target_col, target_pos, weights_v,
                                     k, aggregation, epsilon, out);
-    parallelFor(0, n_recv, worker);
+    missknn_run_with_optional_progress(worker, n_recv, display_progress, progress_cb);
     return out;
   }
 
@@ -763,7 +807,16 @@ IntegerVector cpp_missknn_impute_categorical_column(
   std::vector<double> distances(n_don);
   std::vector<int> topk;
 
+  const bool stoch_have_cb = display_progress && progress_cb.isNotNull();
+  Rcpp::Function stoch_cb = stoch_have_cb ? Rcpp::Function(progress_cb) : Rcpp::Function("identity");
+  const int stoch_report_every = std::max(1, n_recv / 100);
   for (int r = 0; r < n_recv; ++r) {
+    if (display_progress && (r & 63) == 0) {
+      Rcpp::checkUserInterrupt();
+    }
+    if (stoch_have_cb && ((r + 1) % stoch_report_every == 0 || r + 1 == n_recv)) {
+      stoch_cb(r + 1, n_recv);
+    }
     const int receiver = receiver_rows_v[r];
     for (int j = 0; j < n_don; ++j) {
       distances[j] = missknn_distance(receiver - 1, donor_rows_v[j] - 1, target_col - 1,
@@ -1070,7 +1123,9 @@ List cpp_missknn_tune_numeric(
     const IntegerVector& target_cols,
     const List& train_list,
     const List& hold_list,
-    const List& k_grid_list) {
+    const List& k_grid_list,
+    const bool display_progress = false,
+    Rcpp::Nullable<Rcpp::Function> progress_cb = R_NilValue) {
   const int ntar = target_cols.size();
 
   const std::vector<int> col_types_v(col_types.begin(), col_types.end());
@@ -1094,7 +1149,7 @@ List cpp_missknn_tune_numeric(
   TuneNumericWorker worker(numeric_scaled, numeric_raw, categorical_codes, col_types_v,
                             numeric_pos_v, categorical_pos_v, weights_v, epsilon, ridge,
                             target_cols_v, train_v, hold_v, k_grid_v, out_k, out_est, out_global);
-  parallelFor(0, ntar, worker);
+  missknn_run_with_optional_progress(worker, ntar, display_progress, progress_cb);
 
   IntegerVector best_k(ntar);
   CharacterVector best_est(ntar);
@@ -1295,7 +1350,9 @@ List cpp_missknn_tune_categorical(
     const IntegerVector& target_cols,
     const List& train_list,
     const List& hold_list,
-    const List& k_grid_list) {
+    const List& k_grid_list,
+    const bool display_progress = false,
+    Rcpp::Nullable<Rcpp::Function> progress_cb = R_NilValue) {
   const int ntar = target_cols.size();
 
   const std::vector<int> col_types_v(col_types.begin(), col_types.end());
@@ -1319,7 +1376,7 @@ List cpp_missknn_tune_categorical(
   TuneCategoricalWorker worker(numeric_scaled, categorical_codes, col_types_v, numeric_pos_v,
                                 categorical_pos_v, weights_v, epsilon, target_cols_v,
                                 train_v, hold_v, k_grid_v, out_k, out_global);
-  parallelFor(0, ntar, worker);
+  missknn_run_with_optional_progress(worker, ntar, display_progress, progress_cb);
 
   IntegerVector best_k(ntar);
   LogicalVector is_global(ntar);
