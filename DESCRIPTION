@@ -1,16 +1,21 @@
 Package: missknn
 Type: Package
 Title: Fast Masked K-Nearest Neighbor Imputation
-Version: 1.1.2
+Version: 1.2.0
 Author: Imad El Badisy [aut, cre]
 Maintainer: Imad El Badisy <elbadisyimad@gmail.com>
 Authors@R: person("Imad", "El Badisy", email = "elbadisyimad@gmail.com", role = c("aut", "cre"))
-Description: Fast masked KNN imputation for tabular data with support for single and multiple imputation.
+Description: Fast masked k-nearest neighbor imputation for mixed-type
+    tabular data. Distances are computed only on the variables jointly observed
+    by the receiver and the donor, and missing values are filled by local
+    regression (numeric) or weighted vote (categorical) over the nearest donors.
+    Returns completed data for single imputation or a list of completed data
+    sets for multiple imputation.
 URL: https://CRAN.R-project.org/package=missknn
 BugReports: https://github.com/ielbadisy/missknn/issues
 License: MIT + file LICENSE
 Encoding: UTF-8
-Imports: data.table, Rcpp, RcppParallel, stats
+Imports: basetable (>= 1.4.2), Rcpp, RcppParallel, stats
 LinkingTo: Rcpp, RcppParallel
 SystemRequirements: GNU make
 Suggests: bench, ggplot2, knitr, rmarkdown, mimar, missForest,
@@ -19,7 +24,7 @@ VignetteBuilder: knitr
 Config/testthat/edition: 3
 RoxygenNote: 7.3.3
 NeedsCompilation: yes
-Packaged: 2026-08-21 09:10:08 UTC; imad-el-badisy
+Packaged: 2026-11-08 21:33:05 UTC; imad-el-badisy
 Depends: R (>= 3.5.0)
 Repository: CRAN
-Date/Publication: 2026-08-22 01:00:02 UTC
+Date/Publication: 2026-11-09 20:30:08 UTC

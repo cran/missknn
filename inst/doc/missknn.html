@@ -359,38 +359,39 @@ evaluation rather than fixed globally.</p>
 <span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>  <span class="at">g =</span> <span class="fu">factor</span>(<span class="fu">c</span>(<span class="st">&quot;x&quot;</span>, <span class="st">&quot;x&quot;</span>, <span class="st">&quot;y&quot;</span>, <span class="cn">NA</span>, <span class="st">&quot;y&quot;</span>))</span>
 <span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>)</span>
 <span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a></span>
-<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>imp <span class="ot">&lt;-</span> <span class="fu">missknn</span>(x, <span class="at">k =</span> <span class="dv">2</span>, <span class="at">m =</span> <span class="dv">1</span>)</span>
-<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>missknn<span class="sc">::</span><span class="fu">complete</span>(imp)</span>
-<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="co">#&gt;          a        b      g</span></span>
-<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a><span class="co">#&gt;      &lt;num&gt;    &lt;num&gt; &lt;fctr&gt;</span></span>
-<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="co">#&gt; 1: 1.00000 2.000000      x</span></span>
-<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a><span class="co">#&gt; 2: 2.00000 2.336285      x</span></span>
-<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a><span class="co">#&gt; 3: 2.74969 3.000000      y</span></span>
-<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a><span class="co">#&gt; 4: 4.00000 4.000000      y</span></span>
-<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a><span class="co">#&gt; 5: 5.00000 6.000000      y</span></span></code></pre></div>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a><span class="fu">missknn</span>(x, <span class="at">k =</span> <span class="dv">2</span>)</span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a><span class="co">#&gt;         a        b g</span></span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="co">#&gt; 1 1.00000 2.000000 x</span></span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a><span class="co">#&gt; 2 2.00000 2.336285 x</span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="co">#&gt; 3 2.74969 3.000000 y</span></span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a><span class="co">#&gt; 4 4.00000 4.000000 y</span></span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a><span class="co">#&gt; 5 5.00000 6.000000 y</span></span></code></pre></div>
+<p>With <code>m = 1</code> (the default) <code>missknn()</code> returns
+the completed <code>data.frame</code> directly, with the same columns
+and column types as the input.</p>
 <p><code>missknn()</code> detects numeric and categorical
 (factor/character/logical) columns automatically, and imputes both from
 the same masked-distance neighborhood: numeric targets get a
 distance-weighted mean or a local regression fit (whichever validates
 better for that column), categorical targets get a distance-weighted
 majority vote.</p>
-<div id="a-note-on-complete" class="section level3">
-<h3>A note on <code>complete()</code></h3>
-<p><code>complete()</code> is a common generic name - packages like
-<code>mimar</code> or <code>tidyr</code> may also define one. If another
-attached package’s <code>complete()</code> shadows
-<code>missknn</code>’s, call it explicitly:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>missknn<span class="sc">::</span><span class="fu">complete</span>(imp)</span></code></pre></div>
-</div>
 </div>
 <div id="multiple-imputation" class="section level2">
 <h2>Multiple imputation</h2>
 <p>Setting <code>m &gt; 1</code> draws <code>m</code> completed datasets
 by sampling (rather than averaging) from each receiver’s nearest donors,
 using the same distance model throughout:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>imp_mi <span class="ot">&lt;-</span> <span class="fu">missknn</span>(x, <span class="at">k =</span> <span class="dv">2</span>, <span class="at">m =</span> <span class="dv">5</span>, <span class="at">seed =</span> <span class="dv">1</span>)</span>
-<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="fu">length</span>(missknn<span class="sc">::</span><span class="fu">complete</span>(imp_mi))</span>
-<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="co">#&gt; [1] 5</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>imps <span class="ot">&lt;-</span> <span class="fu">missknn</span>(x, <span class="at">k =</span> <span class="dv">2</span>, <span class="at">m =</span> <span class="dv">5</span>, <span class="at">seed =</span> <span class="dv">1</span>, <span class="at">parallel_cores =</span> <span class="dv">1</span><span class="dt">L</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="fu">class</span>(imps)</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="co">#&gt; [1] &quot;mimar_mi&quot; &quot;list&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="fu">length</span>(imps)</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co">#&gt; [1] 5</span></span></code></pre></div>
+<p>The result is a list of <code>m</code> completed data frames (class
+<code>mimar_mi</code>). <code>missknn</code> is an imputer only: fit the
+analysis model on each completed data set, then combine the fits with
+Rubin’s rules, for example with <code>mimar::pool_lm()</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>fits <span class="ot">&lt;-</span> <span class="fu">lapply</span>(imps, <span class="cf">function</span>(d) <span class="fu">lm</span>(a <span class="sc">~</span> b <span class="sc">+</span> g, <span class="at">data =</span> d))</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>mimar<span class="sc">::</span><span class="fu">pool_lm</span>(fits)</span></code></pre></div>
 </div>
 <div id="per-column-adaptive-tuning" class="section level2">
 <h2>Per-column adaptive tuning</h2>
@@ -405,13 +406,13 @@ predicts held-out values better, and</li>
 not, it is filled directly from the global mean/mode, skipping neighbor
 search entirely for that column.</li>
 </ul>
-<p>This is inspected via the fitted object’s <code>meta</code>:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>imp<span class="sc">$</span>meta<span class="sc">$</span>k_per_col</span>
-<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="co">#&gt; [1] 2 2 2</span></span>
-<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>imp<span class="sc">$</span>meta<span class="sc">$</span>estimator_per_col</span>
-<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; [1] &quot;regression&quot; &quot;regression&quot; &quot;regression&quot;</span></span>
-<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>imp<span class="sc">$</span>meta<span class="sc">$</span>is_global_col</span>
-<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co">#&gt; [1] FALSE FALSE FALSE</span></span></code></pre></div>
+<p>The choices are returned in the <code>&quot;tuning&quot;</code> attribute of
+the result:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">attr</span>(<span class="fu">missknn</span>(x, <span class="at">k =</span> <span class="dv">2</span>), <span class="st">&quot;tuning&quot;</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="co">#&gt;   variable missing k  estimator global</span></span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="co">#&gt; a        a       1 2 regression  FALSE</span></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; b        b       1 2 regression  FALSE</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co">#&gt; g        g       1 2       vote  FALSE</span></span></code></pre></div>
 </div>
 <div id="why-this-matters-for-larger-data" class="section level2">
 <h2>Why this matters for larger data</h2>

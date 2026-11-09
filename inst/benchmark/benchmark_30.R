@@ -1,3 +1,6 @@
+# Every method is timed on one thread: missRanger via num.threads = 1, missknn
+# via RcppParallel's thread count (inherited by the per-run subprocesses).
+Sys.setenv(RCPP_PARALLEL_NUM_THREADS = "1", OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1")
 set.seed(20260705)
 
 suppressPackageStartupMessages({
@@ -55,7 +58,7 @@ impute_methods <- function(df_miss, truth_x, seed) {
   x_miss <- df_miss[, setdiff(names(df_miss), "y"), drop = FALSE]
 
   timings <- bench::mark(
-    missknn = complete(missknn(x_miss, k = 5L, m = 1L, seed = seed)),
+    missknn = missknn(x_miss, k = 5L, m = 1L, seed = seed),
     missForest = suppressWarnings(missForest::missForest(x_miss, verbose = FALSE)$ximp),
     missRanger = suppressWarnings(missRanger::missRanger(x_miss, verbose = 0, num.trees = 100, num.threads = 1)),
     `VIM::kNN` = suppressWarnings(as.data.frame(VIM::kNN(x_miss, k = 5L, imp_var = FALSE))),
@@ -64,7 +67,7 @@ impute_methods <- function(df_miss, truth_x, seed) {
   )
 
   completed <- list(
-    missknn = complete(missknn(x_miss, k = 5L, m = 1L, seed = seed)),
+    missknn = missknn(x_miss, k = 5L, m = 1L, seed = seed),
     missForest = suppressWarnings(missForest::missForest(x_miss, verbose = FALSE)$ximp),
     missRanger = suppressWarnings(missRanger::missRanger(x_miss, verbose = 0, num.trees = 100, num.threads = 1)),
     `VIM::kNN` = suppressWarnings(as.data.frame(VIM::kNN(x_miss, k = 5L, imp_var = FALSE)))

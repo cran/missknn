@@ -15,20 +15,19 @@ x <- data.frame(
   g = factor(c("x", "x", "y", NA, "y"))
 )
 
-imp <- missknn(x, k = 2, m = 1)
-missknn::complete(imp)
+missknn(x, k = 2)
+
+## -----------------------------------------------------------------------------
+imps <- missknn(x, k = 2, m = 5, seed = 1, parallel_cores = 1L)
+class(imps)
+length(imps)
 
 ## ----eval = FALSE-------------------------------------------------------------
-# missknn::complete(imp)
+# fits <- lapply(imps, function(d) lm(a ~ b + g, data = d))
+# mimar::pool_lm(fits)
 
 ## -----------------------------------------------------------------------------
-imp_mi <- missknn(x, k = 2, m = 5, seed = 1)
-length(missknn::complete(imp_mi))
-
-## -----------------------------------------------------------------------------
-imp$meta$k_per_col
-imp$meta$estimator_per_col
-imp$meta$is_global_col
+attr(missknn(x, k = 2), "tuning")
 
 ## ----eval = FALSE-------------------------------------------------------------
 # missknn(
